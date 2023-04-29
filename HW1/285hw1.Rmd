@@ -1,0 +1,470 @@
+---
+title: 'UCLA Biostatistics 285: Homework 1'
+subtitle: 'Instructor: Dr. Michele Guindani'
+author: "Soumyakanti Pan, e-mail: span18@ucla.edu"
+date: \today
+output: 
+  pdf_document:
+    toc: false
+    number_sections: true
+    df_print: kable
+header-includes:
+  - \usepackage{amsmath, amssymb, amsfonts, bm}
+  - \newcommand{\given}{\,|\,}
+  - \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+  - \newcommand{\mb}[1]{\mathbf{#1}}
+  - \DeclareUnicodeCharacter{1D6D1}{$\pi$}
+  - \DeclareUnicodeCharacter{1D70E}{$\sigma$}
+bibliography: refs.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, 
+                      opts.label="kill_prefix", messages = FALSE)
+```
+
+\section{Problem 1}
+
+We will carry out the analysis on the dataset `dataHW1` downloaded from
+[class
+website](http://138.68.227.229/~mguindani/teaching/bio285/dataHW1.csv).
+The dataset has one dependent variable `y` and 50 predictor variables
+given by `X`. Dr. Guindani is very kind to provide us a standardized
+dataset so we can drop the intercept from the model.
+
+\subsection{Spike and slab vs Horseshoe Regression}
+
+We can consider a hierarchical model as follows. \begin{align*}
+\mb{Y} \given \bm{\beta}, \sigma^2 &\sim \mathcal{N}(\mb{X} \bm{\beta}, \sigma^2 \mb{I}) \\
+\beta_j \given \gamma_j, \sigma^2 &\sim (1 - \gamma_j)\, \delta_0 + \gamma_j \, \mathcal{N}(0, \tau^2), j = 1, \dots, p \\
+\gamma_j \mid \pi_0 &\sim \mathrm{Ber}(\pi_0), j = 1, \dots, p \\
+\pi_0 &\sim \mathrm{Beta}(a, b) \\
+\sigma^2 &\sim \mathrm{InvGamma}(\nu, \lambda)
+\end{align*}
+
+\subsubsection{SSVS Gibbs sampler}
+
+In order to draw samples from the joint posterior, we cannot form an
+ergodic Markov chain if we carry out a full Gibbs sampler as done in
+@bvsgibbs for normal mixture spike and slab priors. In order to make the
+chain irreducible, we need to draw $\gamma$ from its marginal posterior
+$$
+[\gamma \mid \mb{Y}] \propto [\mb{Y} \mid \gamma] \times [\gamma]
+$$ where we have integrated out the regression coefficients $\bm{\beta}$
+and the error variance $\sigma^2$ [@walli2018]. As shown in class, the
+marginal posterior can be given in closed form by $$
+[\mb{Y} \mid \gamma] \propto \bigg|\mb{X}_\gamma^\top \mb{X}_\gamma + \frac{1}{\tau^2} \mb{I} \bigg|^{-1/2} \left( \lambda + \frac12 S_\gamma^2 \right)^{-\nu-\frac{n}{2}-1}
+$$ where,
+$S_\gamma^2 = \mb{Y}^\top \mb{Y} - \mb{Y}^\top \mb{X}_\gamma \left( \mb{X}_\gamma^\top \mb{X}_\gamma + \frac{1}{\tau^2} \mb{I} \right)^{-1} \mb{X}_\gamma^\top \mb{Y}$.
+So, now we can write a SSVS Gibbs sampler as following in algorithm
+\ref{algo:ssvsgibbs}.
+
+\begin{algorithm}
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{posterior samples $(\gamma^{(t)}, \sigma^{2(t)}, \pi_0^{(t)}, \beta^{(t)})_{t = 0}^T$}
+\SetKwInOut{Initialize}{Initialize}
+\Initialize{Start with $\gamma^{(0)} = (1, \dots, 1)$ and $\pi_0^{(0)} = 0.5$.}
+\BlankLine
+\While{$t = 0, 1, \dots, T$}{
+    \begin{enumerate}
+    \item Sample $\gamma_j$ sequentially in a random permutation order given the rest of $\gamma$ vector, denoted by $\gamma_{-j}$ and $\mb{Y}$, by Bernoulli trials with success probability
+    \[
+    \mathrm{Pr}(\gamma_j^{(t+1)} = 1 \mid \gamma^{(t)}_{-j}, \mb{Y}) = \frac{1}{1 + \frac{1-\pi^{t}_0}{\pi^{(t)}_0} \alpha^{(t)}_j}, \text{ where } \alpha^{(t)}_j = \frac{p(\mb{Y} \mid \gamma_j = 0, \gamma^{(t+1/2)}_{-j})}{p(\mb{Y} \mid \gamma_j = 1, \gamma^{(t+1/2)}_{-j})}
+    \]
+    where, $\gamma^{(t+1/2)}_{-j}$ denotes the most updated $\gamma_{-j}$ vector between $\gamma^{(t)}$ and $\gamma^{(t+1)}$.
+    \item Sample $\sigma^{2(t+1)}$ from $\mathrm{InvGamma}\left(\nu + \frac{n}{2}, \lambda + \frac12 S^{2}_{\gamma^{(t+1)}} \right)$.
+    \item Sample $\pi_0^{(t+1)}$ from $\mathrm{Beta}(a + p^{(t+1)}_1, b+p-p^{(t+1)}_1)$ where $p^{(t+1)}_1 = \sum \gamma_j^{(t+1)}$.
+    \item \eIf{$\gamma_j^{(t+1)} = 0$}{
+        Set $\beta_j^{(t+1)} = 0$.\;
+    }{
+        Sample $\bm{\beta}_\gamma$ from $\mathcal{N}\left( A_\gamma^{(t+1)} \mb{X}_{\gamma^{(t)}}^\top \mb{Y}, \sigma^{2(t+1)} A_\gamma^{(t+1)}\right)$ where $A_\gamma^{(t)} = \left(\mb{X}_{\gamma^{(t)}}^\top \mb{X}_{\gamma^{(t)}} + \frac{1}{\tau^2} \mb{I}\right)^{-1}$. \;
+    }
+    \end{enumerate}\;
+}
+\caption{Stochastic search variable selection (SSVS) via Gibbs sampler}
+\label{algo:ssvsgibbs}
+\end{algorithm}
+
+Following the Gibbs sampler described in algorithm \ref{algo:ssvsgibbs},
+the functions `gamma_logmarginal` and `alpha_j` computes the logarithm
+of marginal posterior density of $\gamma$ and the ratio $\alpha_j^{(t)}$
+respectively. We have considered $\tau^2 = 100, \nu = 2, \lambda = 1, a = 2$ and $b = 2$. I have implemented the sampler using `R` and the output is given below. The output displays the hyperpriors used in the model and the corresponding value of the hyperparameter inputs and the number of samples and burn-in. The output also contains the time elapsed for the chain to complete every 1000 iterations.
+
+```{r, echo=FALSE}
+list.of.packages <- c("readr", "MASS", "reshape2", "plot.matrix", "devtools",
+                      "knitr", "kableExtra", "common", "horseshoe")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+```
+
+```{r, message=FALSE, echo=FALSE}
+library(readr)
+library(MASS)
+
+dat <- readr::read_csv("dataHW1.csv", col_types = cols(...1 = col_skip()))
+Y <- dat$y
+X <- as.matrix(dat[,-1])
+
+n = length(Y)
+p = dim(X)[2]
+tausq = 100
+nu = 2
+lambda = 1
+a = 2
+b = 2
+```
+
+```{r, echo=FALSE}
+gamma_logmarginal = function(g){
+  sub = which(g == 1)
+  if(length(sub) > 1){
+    A.g = solve((t(X[, sub]) %*% X[, sub]) + diag(1/tausq, length(sub)))
+    XgtY = t(X[, sub]) %*% Y 
+    S.g.sq = sum(Y^2) - t(XgtY) %*% A.g %*% XgtY
+    res = 0.5 * log(det(A.g)) - (nu + 0.5 * n + 1) * log(lambda + 0.5 * S.g.sq)
+  }else{
+    res = - (nu + 0.5 * n + 1) * log(lambda + 0.5 * sum(Y^2))
+  }
+  return(res)
+}
+
+alpha_j = function(g, j){
+  if(g[j] == 0){
+    res0 = gamma_logmarginal(g)
+    g[j] = 1
+    res1 = gamma_logmarginal(g)
+  }else{
+    res1 = gamma_logmarginal(g)
+    g[j] = 0
+    res0 = gamma_logmarginal(g)
+  }
+  return(exp(res0 - res1))
+}
+
+ci_post = function(mat, varname){
+  ncol = dim(mat)[2]
+  out = t(apply(mat, 2, function(x){
+    c(mean(x, na.rm = T), sd(x, na.rm = T), 
+      quantile(x, c(0.025, 0.5, 0.975), na.rm = T))}))
+  rownames(out) = paste(varname, 1:ncol, sep = "")
+  colnames(out) = c("Mean", "SD", "2.5%", "50%", "97.5%")
+  return(out)
+}
+```
+
+We set the number of samples to be generated by `n.iter` with a burn-in
+of `n.burnin` samples.
+
+```{r, echo=FALSE}
+n.iter = 1000
+n.burnin = 100
+post.samples = vector(mode = "list", length = 4)
+names(post.samples) = c("gamma", "sigmasq", "pi0", "beta")
+```
+
+```{r, echo=FALSE}
+post.samples$gamma = array(dim = c(n.iter + 1, p))
+post.samples$beta = array(dim = c(n.iter + 1, p))
+colnames(post.samples$gamma) = paste("gamma", 1:p, sep = "")
+colnames(post.samples$beta) = paste("beta", 1:p, sep = "")
+post.samples$sigmasq = array(dim = n.iter + 1)
+post.samples$pi0 = array(dim = n.iter + 1)
+```
+
+```{r, echo=FALSE}
+# Gibbs sampler
+set.seed(1729)
+post.samples$gamma[1,] = rep(1, p)
+post.samples$pi0[1] = 0.5
+A.g = solve((t(X) %*% X) + diag(1/tausq, p))
+library(common)
+cat("Running SSVS Gibbs sampler with options:\n",
+    "n.iter = ", n.iter, ", Burn-in = ", n.burnin, "\n",
+    "Hyperpriors:\t\U1D6D1 ~ Beta (", a, ",", b, ")\n ", 
+    "\t\t\t\t\U1D70E"  %p% supsc("2"), "~ InvGamma (", nu, ",", lambda, ")\n",
+    "========================================\nProgress:\n")
+t0 = Sys.time()
+for(i in 1:n.iter){
+  # sample gamma
+  gamma.update = sample(1:p)
+  post.samples$gamma[i + 1, ] = post.samples$gamma[i, ]
+  for(j in gamma.update){
+    alpha = alpha_j(g = post.samples$gamma[i + 1, ], j = j)
+    pr = 1 / (1 + ((1 - post.samples$pi0[i]) / post.samples$pi0[i]) * alpha)
+    post.samples$gamma[i + 1, j] = rbinom(1, 1, pr)
+  }
+  # sample sigmasq
+  sub = which(post.samples$gamma[i+1, ] == 1)
+  A.g = solve((t(X[, sub]) %*% X[, sub]) + diag(1/tausq, length(sub)))
+  XgtY = t(X[, sub]) %*% Y 
+  S.g.sq = sum(Y^2) - t(XgtY) %*% A.g %*% XgtY
+  post.samples$sigmasq[i + 1] = 1 / rgamma(1, nu + 0.5 * n, lambda + 0.5 * S.g.sq)
+  # sample pi0
+  p1 = sum(post.samples$gamma[i+1, ])
+  post.samples$pi0[i + 1] = rbeta(1, a + p1, b + p - p1)
+  # sample beta
+  g.zero = which(post.samples$gamma[i+1, ] == 0)
+  post.samples$beta[i + 1, g.zero] = 0
+  post.samples$beta[i + 1, sub] = mvrnorm(n = 1, mu = A.g %*% XgtY,
+                                            Sigma = post.samples$sigmasq[i + 1] * A.g)
+  t.elapsed = Sys.time() - t0
+  if(i %% (0.1*n.iter) == 0) cat("Elapsed ", i, " iterations. (", 
+                           round(t.elapsed,2), units(t.elapsed), ")\n")
+}
+```
+
+```{r, echo=FALSE}
+post.gamma = post.samples$gamma[n.burnin:n.iter+1, ]
+post.beta = post.samples$beta[n.burnin:n.iter+1, ]
+colnames(post.beta) = paste("beta", 1:p, sep = "")
+post.sigmasq = post.samples$sigmasq[n.burnin:n.iter+1]
+post.pi0 = post.samples$pi0[n.burnin:n.iter+1]
+```
+
+\subsubsection{Mixing and convergence}
+
+To briefly discuss about mixing times for the chain, it is observed that
+the chain converges quite smoothly. The autocorrelation plots (figure 1)
+of all the parameters $\bm{\beta}, \sigma^2$ and $\pi_0$ show very low
+serial correlation indicating almost independent samples from the
+posterior distributions.
+
+```{r acf, echo=FALSE, fig.align='center', fig.height=3, fig.cap="ACF plots of posterior samples"}
+par(mfrow = c(1, 2))
+acf(post.beta[,1], main = expression(paste(beta[1])))
+acf(post.sigmasq, main = expression(paste(sigma^2)))
+```
+
+In addition, the traceplots also show visual diagnostics of the chains
+attaining stationarity as seen in figures 2 and 3.
+
+```{r gamma, echo=FALSE, fig.align='center', fig.width=4.5, fig.height=3, fig.cap="Summary of first 100 samples - Black: 0, Lightyellow: 1"}
+library(plot.matrix)
+par(mar=c(5.1, 4.1, 4.1, 4.1))
+plot(t(post.samples$gamma[1:100,]), border = NA, las = 1,
+     col = c("black", "lightyellow"),
+     breaks = 2, cex.axis = 0.5, 
+     xlab = "", ylab = "", key = NULL,
+     main = expression(paste(gamma)))
+devtools::unload('plot.matrix')
+```
+
+```{r trace, echo=FALSE, fig.align='center', fig.height=5, fig.cap="Traceplots of relevant parameters"}
+par(mfrow = c(2,2))
+plot(post.samples$beta[,1], type = "l", 
+     col = "blueviolet",
+     main = expression(paste(beta[1])),
+     xlab = "Iteration", ylab = "Value")
+plot(post.samples$beta[,10], type = "l", 
+     col = "coral4",
+     main = expression(paste(beta[10])),
+     xlab = "Iteration", ylab = "Value")
+plot(post.samples$sigmasq, type = "l", 
+     col = "blue4",
+     main = expression(paste(sigma^2)),
+     xlab = "Iteration", ylab = "Value")
+plot(post.samples$pi0, type = "l", 
+     col = "cyan4",
+     main = expression(paste(pi[0])),
+     xlab = "Iteration", ylab = "Value")
+```
+
+\subsubsection{Posterior credible intervals and probability of inclusions (PPI)}
+
+Post cleaning the chain by removing the burn-in samples and subsequent
+thinning (not essential in this case), we can find the posterior
+credible intervals of the parameters.
+
+```{r, echo=FALSE}
+library(knitr)
+library(kableExtra)
+df.beta.summary = as.data.frame(ci_post(post.beta, "beta"))
+knitr::kable(df.beta.summary[1:10, ], digits = 2,
+             caption = "Posterior summary of first 10 effect sizes",
+             format = "latex", booktabs = T) %>%
+  kable_styling(latex_options = "striped", position = "center")
+```
+
+The following plots (figure 4) shows a multiple box plot containing the
+posterior credible intervals of $\bm{\beta}$ and ordered posterior
+probability of inclusions (PPIs). The posterior probability of inclusion
+of the $j$-th predictor is calculated by the empirical relative
+frequencies as follows. $$
+\mathrm{Pr} (\gamma_j = 1 \given \mb{Y}) \approx \frac{1}{T} \sum_{t = 1}^T \mathbf{1}\left( \gamma_j^{(t)} = 1 \right)
+$$ where, $T$ is the total number of posterior samples and
+$\gamma_j^{(t)}$ is the $t$-th posterior sample of $\gamma_j$ in the
+cleaned chain.
+
+```{r, echo=FALSE, message=FALSE, fig.align='center', fig.height=4, fig.width=4.5, fig.cap="Posterior credible intervals of effect sizes and PPIs"}
+require(reshape2)
+df.beta = melt(post.beta)
+ppi = data.frame(var = paste("X", 1:p, sep = ""),
+                 prob = as.numeric(apply(post.gamma, 2, mean)))
+
+ppi.ordered = ppi[order(ppi$prob), ]
+
+# par(mfrow = c(1, 2))
+layout(matrix(c(1,1,2), nrow = 1, ncol = 3, byrow = TRUE))
+boxplot(df.beta$value ~ df.beta$Var2,
+        range = 1.96,
+        xlab = "", ylab = "",
+        main = "HPD intervals",
+        whisklty = 1, whisklwd = 0.5,
+        staplelty = 1, staplelwd = 0.5,
+        outpch = ".", outcol = "grey", outcex = 0.5,
+        medcol = rep(c("darkgreen", "red"), times = c(5, 45)),
+        col = rep(c("darkseagreen1", "coral"), times = c(5, 45)),
+        yaxt = "n", cex.axis = 0.5,
+        horizontal = T)
+axis(2, tick = T, at = 1:50, labels = paste("beta", 1:50, sep = ""),
+     las = 2, cex.axis = 0.5)
+abline(h = 5.5, lty = 2, lwd = 0.5, col = "orange")
+
+dotchart(ppi.ordered$prob, labels = ppi.ordered$var, pch = 19,
+         xlim = c(0, 1), pt.cex = 0.8,
+         color = rep(c("lightblue4", "magenta4"),
+                     times = c(45, 5)),
+         cex = 0.5,
+         main = "PPI")
+```
+
+\subsubsection{Bayesian FDR}
+
+We shall find the optimal threshold for the PPIs as discussed in class.
+If we consider a loss function as a weighted sum of FP and FN counts
+across the hypotheses [@newton2004], then the posterior risk is
+minimized by thresholding the posterior probability of inclusion $$
+\nu_j = \mathrm{Pr}(\gamma_j = 1 \given \mb{Y}) < \frac{1}{1 + \lambda}
+$$ where $\lambda$ can be chosen to control the Bayesian FDR $$
+\mathrm{BFDR} = \frac{\sum (1 - \nu_j) \delta_j}{\sum \delta_j}
+$$ at level $\alpha$ where $\delta_j$ denotes the indicator for
+rejecting the $j$-th comparison. In our case, we choose $\alpha = 0.05$
+and will plot $\mathrm{BFDR}$ across a grid of possible values of
+$\lambda$ and thereby choose its optimal value to ensure the FDR
+controlled at $0.05$.
+
+```{r BFDR, echo=FALSE, fig.align='center', fig.height=3, fig.width=4.5, fig.cap="Choosing optimal cutoff in order to control bayesian FDR"}
+BFDR = function(lambda, ppi){
+  decision = as.numeric(ppi > (1 / (1 + lambda)))
+  return(sum((1 - ppi) * decision) / sum(decision))
+}
+alpha = 0.05
+lambdaseq = seq(0.001, 0.4, length.out = 100)
+bfdr.vec = sapply(lambdaseq, function(x) BFDR(x, ppi = ppi$prob))
+
+plot(lambdaseq, bfdr.vec, type = "l", las = 1,
+     # ylim = c(0, 0.06),
+     xlab = expression(paste(lambda)),
+     ylab = "BFDR", cex.axis = 0.8, xaxt = "n")
+abline(h = alpha, lty = 2, col = "brown1")
+lambda.opt = lambdaseq[min(which(bfdr.vec > 0.05))]
+arrows(x0 = lambda.opt, y0 =  bfdr.vec[min(which(bfdr.vec > 0.05))],
+       x1 = lambda.opt, y1 = 0,
+       length = 0.08, angle = 20,
+       code = 2, lwd = 0.5,
+       col = "forestgreen")
+axis(1, at = c(0, 0.1, 0.2, 0.3, 0.4), cex.axis = 0.8)
+axis(1, at = lambda.opt, labels = NA, 
+     col.ticks = "forestgreen", lwd.ticks = 4)
+
+cutoff = 1/(1+lambda.opt)
+```
+
+Once we have found the optimal value of $\lambda$
+(`r round(lambda.opt, 4)`), we can formulate the rejection rule as
+follows - we reject the null hypothesis $H_{0j}: \beta_j = 0$ if the
+posterior probability of inclusion of the $j$-th predictor, $\nu_j >$
+`r round(cutoff, 3)` for $j = 1, \dots, p$.
+
+\subsection{Horseshoe prior}
+
+Here, we consider the horseshoe prior by @horseshoe. The `horseshoe`
+package in `R` provides the `horseshoe` function which implements the
+following full Bayesian hierarchical model for variable selection.
+\begin{align*}
+  \mb{Y} \given \bm{\beta}, \sigma^2 &\sim \mathcal{N}(\mb{X} \bm{\beta}, \sigma^2 \mb{I}_n) \\
+  \beta_j \given \sigma^2, \lambda_j, \tau^2 &\sim \mathcal{N}(0, \sigma^2 \lambda_j^2 \tau^2) \\
+  \lambda_j &\sim \mathrm{C}^+ (0, 1); \ \tau \sim \mathrm{C}^+ (0, 1) \\
+  p(\sigma^2) & \propto \frac{1}{\sigma^2}
+\end{align*} where $\mathrm{C}^+$ denotes the standard half-Cauchy
+distribution on the positive reals with scale parameter $1$.
+
+\subsubsection{Results from `horseshoe' package}
+
+```{r, echo=FALSE, results='hide'}
+library(horseshoe)
+
+hs.object <- horseshoe(Y, X, nmc = 10000,
+                       method.tau = "halfCauchy", 
+                       method.sigma ="Jeffreys")
+df <- data.frame(index = paste("beta", 1:p, sep = ""),
+                 "Mean" = hs.object$BetaHat,
+                 "SD" = apply(hs.object$BetaSamples, 1, sd),
+                 "2.5%" = as.numeric(hs.object$LeftCI),
+                 "50%" = as.numeric(hs.object$BetaMedian),
+                 "97.5%" = as.numeric(hs.object$RightCI)
+                 )
+```
+```{r, echo=FALSE}
+knitr::kable(df[1:10, ], digits = 2,
+             caption = "Posterior summary of first 10 effect sizes using horseshoe prior",
+             format = "latex", booktabs = T) %>%
+  kable_styling(latex_options = "striped", position = "center")
+```
+We see that both the methods identify the same effects to be significant and with almost similar estimates. In addition, we see slighly lower standard errors with SSVS Gibbs sampler than that of with horseshoe prior. Given the posterior credible intervals of $\beta$, using the `horseshoe` package, we can select variables by either the `interval` method where we reject the null hypothesis $H_{0j}: \beta_j = 0$ if the posterior credible interval of $\beta_j$ does not contain 0. The other method is `threshold` where we threshold the shrinkage coefficients, but that is only applicable to the sparse normal mean problem [@horseshoe] which is essentially regression with identity design matrix, clear not  our case.
+```{r}
+hs.beta = HS.var.select(hs.object, Y, method = "interval")
+cat(paste("beta", which(hs.beta == 1), sep = ""), "\n")
+```
+We find only the above `r sum(hs.beta)` effects to be significant. However, one can also use the shrinkage coefficients to select variables. Note that under the above model, we can write the conditional posterior of $\bm{\beta}$ as
+\[
+\tilde{\bm{\beta}} = \mathbb{E} \left[ \bm{\beta} \given \mb{\Lambda}, \tau, \sigma^2, \mb{Y} \right] = \tau^2 \mb{\Lambda} \left( \tau^2 \mb{\Lambda} + (\mb{X}^\top \mb{X})^{-1} \right)^{-1} \hat{\bm{\beta}}
+\]
+where, $\hat{\bm{\beta}}$ is the maximum likelihood estimate. Under the assumption that the predictors are uncorrelated with unit variance and zero mean, then $\mb{X}^\top \mb{X} \approx n \mb{I}$, and we can approximate 
+\[
+\tilde{\beta}_j \approx (1 - \kappa_j) \hat{\beta}_j
+\]
+where, 
+\[
+\kappa_j = \frac{1}{1 + n \tau^2 \lambda_j^2}
+\]
+is the shrinkage factor for $\beta_j$ [@piironenvehtari]. One can use the shrinkage coefficient to give a thresholding rule as in we will reject $H_{0j}: \beta_j = 0$ id $(1 - \hat{\kappa}_j) > c$, for some constant $c$. This $c$ will depend on the loss function of which we are trying to minimize the posterior risk. If the loss function is a symmetric 0-1 loss function giving equal weights to false positives and false negatives, $c = 0.5$.
+
+\subsubsection{Prior for the global shrinkage parameter}
+
+Following from the expression of the shrinkage coefficient $\kappa_j$, when $\tau^2 = 1$, the prior distribution of the shrinkage coefficient $p(\kappa_j \given \tau)$ will become $\mathrm{Beta}(1/2, 1/2)$, our usual horseshoe prior. This means a priori, we give most of the mass to both the possibilities - relevant effect ($\kappa = 0$, no shrinkage) and irrelevant effects ($\kappa = 1$, shrinkage to 0). The interesting bit is that $\tau$ can be calibrated to push mass at either boundary - 0 or 1 [@piironenvehtari]. For example if $\tau$ is chosen such that $n \tau^2 = 0.1$, then majority of the prior mass of $\kappa$ will be at 1 favoring complete shrinkage and as a result we should expect more variables to be shrunk to 0. 
+
+The usual options for the prior on the global shrinkage prior $\tau$ in this set-up is $\mathrm{C}^+(0, 1)$, standard half-Cauchy or $\mathrm{C}^+(0, a^2)$, standard half-Cauchy with scale parameter $a$. It has been pointed out that arbitrary choice of $a$ can give unnecessary mass to implausible values of $\tau$. @piironenvehtari has focused on the a priori distribution of $m_{\text{eff}}$, the effective number of nonzero coefficients induced by the hyperpriors on $\tau$ and the scale pixture distribution on $\lambda$. The prior distribution on $m_{\text{eff}}$ written as
+\[
+m_{\text{eff}} = \sum_{j = 1}^p (1 - \kappa_j)
+\]
+can be calculated easily by composition sampling in the order
+\[
+\begin{bmatrix}
+\tau \sim p(\tau) \\
+\{\lambda_j\}_{j = 1}^p \sim f_\lambda
+\end{bmatrix} \rightarrow
+\begin{bmatrix}
+    \kappa_j \sim p(\kappa \given \lambda_j, \tau), \\
+    j = 1, \dots, p
+\end{bmatrix} \rightarrow
+p(m_{\text{eff}} \given \tau, \lambda).
+\]
+We can also easily calculate the a priori mean and variance of $m_{\text{eff}}$, which can be given as follows.
+\begin{align*}
+  \mathbb{E} \left[ m_{\text{eff}} \given \tau \right] &= \frac{p \tau \sqrt{n}}{1 + \tau \sqrt{n}} \\
+  \mathrm{Var}\left[ m_{\text{eff}} \given \tau \right] &= \frac{p \tau \sqrt{n}}{2 (1 + \tau \sqrt{n})^2}
+\end{align*}
+Hence, we will need $\tau$ to scale $1/\sqrt{n}$, failure to which will cause favoring models of varying sizes depending on the sample size $n$. Now, if we have a prior guess on the number of relevant variables as $p_0$, we can equate $\mathbb{E}[m_{\text{eff}} \given \tau ] = p_0$ and consider a prior which is concentrated around 
+\[
+\tau_0 = \frac{p_0}{p - p_0}\frac{1}{\sqrt{n}}
+\]
+which is definitely not near 1, the choice the function `horseshoe` is using. @piironenvehtari has also suggested using $\tau_0$ as different types of prior on $\tau$ such as point mass at $\tau_0$, half-normal and half-Cauchy priors with scale parameter $\tau_0$. This suggestion for the optimal value of $\tau$ also asymptotically aligns with the optimal value in terms of mean squared error and posterior contraction rates with respect to the true effects $\bm{\beta}^*$ for the sparse normal means problem as shown in @vanderpas2014.
+
+\section{Problem 2}
+
+
+\section*{References}
+
+<div id="refs"></div>

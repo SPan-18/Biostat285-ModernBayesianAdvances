@@ -50,7 +50,8 @@ ergodic Markov chain if we carry out a full Gibbs sampler as done in
 chain irreducible, we need to draw $\gamma$ from its marginal posterior
 $$
 [\gamma \mid \mb{Y}] \propto [\mb{Y} \mid \gamma] \times [\gamma]
-$$ where we have integrated out the regression coefficients $\bm{\beta}$
+$$ 
+where we have integrated out the regression coefficients $\bm{\beta}$
 and the error variance $\sigma^2$ [@walli2018]. As shown in class, the
 marginal posterior can be given in closed form by $$
 [\mb{Y} \mid \gamma] \propto \bigg|\mb{X}_\gamma^\top \mb{X}_\gamma + \frac{1}{\tau^2} \mb{I} \bigg|^{-1/2} \left( \lambda + \frac12 S_\gamma^2 \right)^{-\nu-\frac{n}{2}-1}
@@ -93,7 +94,8 @@ respectively. We have considered $\tau^2 = 100, \nu = 2, \lambda = 1, a = 2$ and
 
 ```{r, echo=FALSE}
 list.of.packages <- c("readr", "MASS", "reshape2", "plot.matrix", "devtools",
-                      "knitr", "kableExtra", "common", "horseshoe")
+                      "knitr", "kableExtra", "common", "horseshoe",
+                      "BoomSpikeSlab", "mombf")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 ```
@@ -464,6 +466,94 @@ which is definitely not near 1, the choice the function `horseshoe` is using. @p
 
 \section{Problem 2}
 
+```{r boomspikeslab, results='hide', echo=FALSE}
+set.seed(1729)
+library(BoomSpikeSlab)
+
+generate.X = function(n, p){
+  return(matrix(rnorm(n * p), ncol = p))
+}
+
+relev.true = paste("X", 1:10, sep = "")
+out2 <- data.frame(p = as.numeric(),
+                   s = as.numeric(),
+                   mean.s = as.numeric(),
+                   median.s = as.numeric(),
+                   FN = as.character(),
+                   FP = as.character())
+pseq = rep(c(100, 1000, 10000), each = 2)
+sseq = rep(c(0.5, 3), times = 3)
+ps.opt = cbind(pseq, sseq)
+niter <- 1000
+burnin = 100
+for(i in 1:6){
+  p <- ps.opt[i, 1]
+  sigma <- ps.opt[i, 2]
+  out2[i, 1] <- p
+  out2[i, 2] <- sigma 
+  X <- generate.X(n, p)
+  beta.star <- rep(0, p)
+  beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+  Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+  prior <- SpikeSlabPrior(X, Y)
+  model <- lm.spike(Y ~ 0 + X, niter = niter)
+  res <- summary(model)
+  out2[i, 3] <- mean(model$sigma[-(1:burnin)])
+  out2[i, 4] <- median(model$sigma[-(1:burnin)])
+  relev.est = names(which(res$coefficients[, "inc.prob"] > 0.5))
+  false.disc = setdiff(relev.est, relev.true)
+  false.neg = setdiff(relev.true, relev.est)
+  out2[i, 5] <- paste(false.disc, collapse = ", ")
+  out2[i, 6] <- paste(false.neg, collapse = ", ")
+}
+```
+
+```{r boomspikeslab2, echo=FALSE}
+print(out2)
+```
+With increase in $p^*/p$, we see poor estimation of error variance $\sigma$ as well as increase in false discoveries with respect to the median cutoff rule which implies poor estimation of posterior inclusion probabilities. With respect to $p^*/p$, the effect of increasing $\sigma$ has lesser impact with lesser number of false positives. In most of the cases, naturally the values of $\beta_j$ closer to 0 is more likely to be missed as a signal. It is also seen that, $\sigma$ somehow has to scale with the ratio $p^*/p$, as for a lower ratio, low error can give more false dicoveries as we see in the case of $p = 10000, \sigma = 0.5$. 
+
+```{r mombf, echo=FALSE, results='hide'}
+library(mombf)
+n <- 100
+p <- 100
+sigma <- 0.5
+X <- generate.X(n, p)
+beta.star <- rep(0, p)
+beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+
+fit <- modelSelection(Y, X)
+head(postProb(fit))
+
+ps.options = cbind(c(rep(100, 4), 500),
+                   c(100, 100, 1000, 1000, 1000),
+                   c(0.5, 3, 0.5, 3, 3))
+out.nlp = vector(mode = "list", length = 5)
+for(i in 1:5){
+  n <- ps.options[i, 1]
+  p <- ps.options[i, 2]
+  sigma <- ps.options[i, 3]
+  X <- generate.X(n, p)
+  beta.star <- rep(0, p)
+  beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+  Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+  fit <- invisible(modelSelection(Y, X, verbose = F))
+  out.nlp[[i]] = postProb(fit)[1:6, ]
+}
+```
+
+```{r, echo=FALSE}
+for(i in 1:5){
+  cat("n = ", ps.options[i, 1], 
+      ", p = ", ps.options[i, 2], 
+      ", s = ", ps.options[i, 3], "\n")
+  print(out.nlp[[i]])
+  cat("\n")
+}
+```
+
+In most of the cases, we see that non-local priors has missed the discovery of $\beta_j$'s near zero. Higher value of $\sigma$ has considerable effect on selection of the best subset. Higher number of samples have positive impact on the posterior probability of the best subset.
 
 \section*{References}
 

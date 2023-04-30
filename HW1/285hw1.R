@@ -1,4 +1,3 @@
-# hello
 rm(list = ls())
 setwd("~/Documents/UCLA Study Stuff/Spring 23/Biostat 285/Biostat285HW/HW1")
 # load library
@@ -233,22 +232,113 @@ df$selected.CI <- HS.var.select(hs.object, Y, method = "threshold",
 
 ######################################################################
 
+library(BoomSpikeSlab)
+
 generate.X = function(n, p){
-  return(MASS::mvrnorm(n = n, mu = rep(0, p), Sigma = diag(p)))
+  return(matrix(rnorm(n * p), ncol = p))
 }
 
-n = 100
-p = 100
-p.star = 10
-sigma = 0.5
+n <- 100
+p <- 10000
+p.star <- 10
+sigma <- 0.5
+niter <- 1000
 
-X = generate.X(n, p)
-beta.star = rep(0, p)
-beta.star[1:10] = c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+X <- generate.X(n, p)
+beta.star <- rep(0, p)
+beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
 
-Y = as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+prior <- SpikeSlabPrior(X, Y,
+                        optional.coefficient.estimate = rep(0, p))
+model <- lm.spike(Y ~ 0 + X, niter = niter)
+
+# plot.ts(model$beta)
+hist(model$sigma)
+mean(model$sigma)
+median(model$sigma)
+plot(model)
+res = summary(model)
+plot(model, "scaled.coefficients", whisklty = 1, whisklwd = 0.5,
+     staplelty = 1, staplelwd = 0.5,
+     outpch = ".", outcol = "grey", outcex = 0.5)
+relev.true = paste("X", 1:10, sep = "")
+relev.est = names(which(res$coefficients[, "inc.prob"] > 0.5))
+false.disc = setdiff(relev.est, relev.true)
+false.neg = setdiff(relev.true, relev.est)
+res$coefficients[false.neg, "inc.prob"]
+beta.star[as.numeric(sub('X', "", false.neg))]
 
 
+relev.true = paste("X", 1:10, sep = "")
+out2 <- data.frame(p = as.numeric(),
+                   s = as.numeric(),
+                   mean.s = as.numeric(),
+                   median.s = as.numeric(),
+                   FN = as.character(),
+                   FP = as.character())
+pseq = rep(c(100, 1000, 10000), each = 2)
+sseq = rep(c(0.5, 3), times = 3)
+ps.opt = cbind(pseq, sseq)
+niter = 1000
+burnin = 100
+for(i in 1:6){
+  p <- ps.opt[i, 1]
+  sigma <- ps.opt[i, 2]
+  out2[i, 1] <- p
+  out2[i, 2] <- sigma 
+  X <- generate.X(n, p)
+  beta.star <- rep(0, p)
+  beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+  Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+  prior <- SpikeSlabPrior(X, Y)
+  model <- lm.spike(Y ~ 0 + X, niter = niter)
+  res <- summary(model)
+  out2[i, 3] <- mean(model$sigma[-(1:burnin)])
+  out2[i, 4] <- median(model$sigma[-(1:burnin)])
+  relev.est = names(which(res$coefficients[, "inc.prob"] > 0.5))
+  false.disc = setdiff(relev.est, relev.true)
+  false.neg = setdiff(relev.true, relev.est)
+  out2[i, 5] <- paste(false.disc, collapse = ", ")
+  out2[i, 6] <- paste(false.neg, collapse = ", ")
+}
 
+print(out2)
+
+library(mombf)
+n <- 100
+p <- 100
+sigma <- 0.5
+X <- generate.X(n, p)
+beta.star <- rep(0, p)
+beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+
+fit <- modelSelection(Y, X)
+head(postProb(fit))
+
+ps.options = cbind(c(rep(100, 4), 500),
+                   c(100, 100, 1000, 1000, 1000),
+                   c(0.5, 3, 0.5, 3, 3))
+out.nlp = vector(mode = "list", length = 5)
+for(i in 1:5){
+  n <- ps.options[i, 1]
+  p <- ps.options[i, 2]
+  sigma <- ps.options[i, 3]
+  X <- generate.X(n, p)
+  beta.star <- rep(0, p)
+  beta.star[1:10] <- c(-5, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 5)
+  Y <- as.numeric(X %*% beta.star + rnorm(n = n, mean = 0, sd = sigma))
+  fit <- invisible(modelSelection(Y, X, verbose = F))
+  out.nlp[[i]] = postProb(fit)[1:6, ]
+}
+
+for(i in 1:5){
+  cat("n = ", ps.options[i, 1], 
+      ", p = ", ps.options[i, 2], 
+      ", s = ", ps.options[i, 3], "\n")
+  print(out.nlp[[i]])
+  cat("\n")
+}
 
 

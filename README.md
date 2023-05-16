@@ -4,3 +4,4 @@ _Instructor_: Dr. Michele Guindani
 
 Topics include:
 1. Bayesian Variable Selection
+2. Bayesian Nonparametrics

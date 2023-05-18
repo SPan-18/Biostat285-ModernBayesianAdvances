@@ -34,7 +34,8 @@ dph.samples = NULL
 for(alpha in c(0.1, 0.5, 1, 10)){
   dph.samples.temp = array(dim = c(sample.size, N.S))
   for(i in 1:N.S){
-    dph.samples.temp[, i] = generate_DPH(alpha = alpha, K = 20, N.sample = sample.size,
+    dph.samples.temp[, i] = generate_DPH(alpha = alpha, K = 20, 
+                                         N.sample = sample.size,
                                          base = "norm", baseparams = c(0, 1))
   }
   xnam = paste("x", 1:N.S, sep = "")

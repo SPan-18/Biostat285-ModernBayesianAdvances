@@ -23,10 +23,11 @@ generate_DPH = function(alpha, K, N.sample,
     m = baseparams[1]
     s = baseparams[2]
     atoms = rnorm(n = K, mean = m, sd = s)
-    w = jump(alpha, K)
-    dph.sample = sample(x = atoms, replace = T, 
-                        size = N.sample, prob = w)
   }else stop("Incorrect base measure/parameters.")
+  w = jump(alpha, K)
+  dph.sample = sample(x = atoms, replace = T, 
+                      size = N.sample, prob = w)
+  return(dph.sample)
 }
 
 set.seed(1729)
@@ -140,5 +141,79 @@ boxplot(E.M.dph, boxwex = c(0.25, 0.25, 0.25, 0.75), xaxt = "n",
         medcol = "darkblue", col = "lightblue",
         at = alphaseq, add = T)
 
+library(readr)
+DPdata <- read_csv("DPdata.csv", col_types = cols(...1 = col_skip()))
+# View(DPdata)
+
+ecdfplot(~ x, data = DPdata)
+
+posterior_DPH = function(alpha, K = 50, 
+                         N.sample = 1000, n.postG,
+                         jump = Sethu_jump,
+                         dat){
+  n = length(dat)
+  post.samples = array(dim = c(N.sample, n.postG))
+  for(j in 1:n.postG){
+    temp = runif(K)
+    atoms = array(dim = K)
+    for(i in 1:K){
+      if(temp[i] < alpha/(alpha + n))  atoms[i] = rnorm(1, 0, 1)
+      else atoms[i] = sample(dat, size = 1)
+    }
+    w = jump(alpha + n, K)
+    post.samples[, j] = sample(x = atoms, replace = T, 
+                               size = N.sample, prob = w)
+  }
+  xnam = paste("pG", 1:n.postG, sep = "")
+  colnames(post.samples) = xnam
+  post.samples = as.data.frame(post.samples)
+  return(post.samples)
+}
+
+N.postG = 50
+post.df = posterior_DPH(alpha = 10, 
+                        n.postG = N.postG,
+                        jump = Sethu_jump,
+                        dat = as.numeric(DPdata$x))
+
+xnam = paste("pG", 1:N.postG, sep = "")
+fmla2 = as.formula(paste("~ ", paste(c(xnam, "x"), collapse= "+")))
+post.df$x = as.numeric(DPdata$x)
+normseq = seq(min(post.df), max(post.df), length.out = 1000)
+ecdfplot(fmla2, data = post.df, 
+         col = rep(c("gray", "black"), times = c(N.postG, 1)),
+         xlab = "", ylab = "", xaxt = "n", asp = 1.5) +
+  as.layer(xyplot(pnorm(normseq) ~ normseq, type = "l", 
+                  col = "red", lty = 2, lwd = 2))
 
 
+set.seed(1729)
+N.postG = 50
+sample.size = 1000
+alphaseq = c(0.1, 0.5, 1, 10)
+post.samples = NULL
+for(alpha in alphaseq){
+  post.samples.temp = array(dim = c(sample.size, N.postG))
+  for(i in 1:N.postG){
+    post.samples.temp = posterior_DPH(alpha = alpha, K = 50, 
+                                      N.sample = sample.size,
+                                      n.postG = N.postG,
+                                      jump = Sethu_jump,
+                                      dat = as.numeric(DPdata$x))
+  }
+  xnam = paste("pG", 1:N.postG, sep = "")
+  colnames(post.samples.temp) = xnam
+  post.samples.temp = as.data.frame(post.samples.temp)
+  post.samples.temp$x = as.numeric(DPdata$x)
+  post.samples = rbind(post.samples, post.samples.temp)
+}
+alpha.labels = paste("\U03B1 =",
+                     as.character(alphaseq), sep = " ")
+post.samples$alpha = rep(alpha.labels, each = sample.size)
+
+fmla2 = as.formula(paste("~ ", paste(c(xnam, "x"), collapse= "+"), " | alpha"))
+ecdfplot(fmla2, data = post.samples,
+         col = rep(c("gray", "black"), times = c(N.postG, 1)),
+         xlab = "", ylab = "", xaxt = "n", asp = 1.5) +
+  as.layer(xyplot(pnorm(normseq) ~ normseq, type = "l", 
+                  col = "red", lty = 2, lwd = 2))

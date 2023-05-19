@@ -23,7 +23,8 @@ knitr::opts_chunk$set(echo = TRUE, comment = NA, fig.showtext = TRUE,
 ```
 
 ```{r, echo=FALSE}
-list.of.packages <- c("lattice", "latticeExtra", "showtext")
+list.of.packages <- c("lattice", "latticeExtra", "showtext", "ggplot2",
+                      "gridExtra")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 ```
@@ -41,7 +42,6 @@ library(showtext)
 ```
 
 ```{r, echo = FALSE}
-set.seed(1729)
 K.trunc = 20
 Sethu_jump = function(alpha, K = K.trunc){
   v = w = array(dim = K)
@@ -68,11 +68,13 @@ generate_DPH = function(alpha, K, N.sample,
 }
 ```
 
-```{r, echo=FALSE}
-N.S = 10
+```{r, echo=FALSE, fig.height=3.5, fig.width=7, fig.cap="Prior c.d.f realizations of Dirichlet process with different base measures."}
+set.seed(1729)
+N.S = 50
 sample.size = 100
+alphaseq = c(0.1, 0.5, 1, 10)
 dph.samples = NULL
-for(alpha in c(0.1, 0.5, 1, 10)){
+for(alpha in alphaseq){
   dph.samples.temp = array(dim = c(sample.size, N.S))
   for(i in 1:N.S){
     dph.samples.temp[, i] = generate_DPH(alpha = alpha, K = 20, N.sample = sample.size,
@@ -84,13 +86,113 @@ for(alpha in c(0.1, 0.5, 1, 10)){
   dph.samples = rbind(dph.samples, dph.samples.temp)
 }
 alpha.labels = paste(expression(α), "=",
-                     c("0.1", "0.5", "1", "10"), sep = " ")
+                     as.character(alphaseq), sep = " ")
 dph.samples$alpha = rep(alpha.labels, each = sample.size)
 
 fmla1 = as.formula(paste("~ ", paste(xnam, collapse= "+"), " | alpha"))
-ecdfplot(fmla1, data = dph.samples,
+ecdfplot(fmla1, data = dph.samples, lwd = 0.5,
          xlab = "", ylab = "", xaxt = "n", asp = 1.5)
 ```
+
+We can also get Monte Carlo estimates of the mean functional $\mu(G)$ and the variance functional $\sigma^2(G)$ from the prior realizations of $G$, drawn by assuming a truncation upto $K = 20$ terms. 
+
+```{r, echo=FALSE, message=FALSE}
+mv_functional = function(n.G, alpha, 
+                         sample.size = 100,
+                         K = 20, base = "norm",
+                         baseparams = c(0, 1)){
+  dph.samples.temp = array(dim = c(sample.size, n.G))
+  for(i in 1:n.G){
+    dph.samples.temp[, i] = generate_DPH(alpha = alpha, K = K, 
+                                         N.sample = sample.size,
+                                         base = base, 
+                                         baseparams = baseparams)
+  }
+  m.G = apply(dph.samples.temp, 2, mean)   # mean functional
+  v.G = apply(dph.samples.temp, 2, var)     # variance functional
+  return(cbind(m.G, v.G))
+}
+```
+```{r, echo = FALSE}
+n.G = 1000
+mv.df = data.frame(mean = as.numeric(),
+                   var = as.numeric())
+for(alpha in alphaseq){
+  temp = mv_functional(n.G = n.G, alpha = alpha)
+  mv.df = rbind(mv.df, temp)
+}
+
+names(mv.df) = c("mean", "var")
+mv.df$alpha = rep(alpha.labels, each = n.G)
+```
+```{r, message=FALSE, echo=FALSE, fig.height=3, fig.width=7, fig.align='center', fig.cap="Prior distributions of mean and variance functionals from 1000 prior samples"}
+library(ggplot2)
+
+plot.mu = ggplot(mv.df) +
+  geom_histogram(aes(x = mean, y = after_stat(density)), 
+                 binwidth = 0.1) +
+  geom_density(aes(x = mean), lwd = 0.25, colour = 4,
+               fill = 4, alpha = 0.25) +
+  facet_wrap(~ alpha, ncol = 2) +
+  xlab(expression(paste(mu, (G)))) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+
+plot.var = ggplot(mv.df) +
+  geom_histogram(aes(x = var, y = after_stat(density)), 
+                 bins = 30) +
+  facet_wrap(~ alpha, ncol = 2) +
+  xlab(expression(paste(sigma^2, (G)))) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+
+gridExtra::grid.arrange(plot.mu, plot.var, ncol = 2)
+```
+We see in Figure 2, that naturally the mean functional $\mu(G)$ is centered around 0 since the base measure is centered around 0 but higher the value of $\alpha$, more is the concentration of the mean functional around 0. In other words, the mean functional has higher kurtosis for higher $\alpha$. On the other hand, the variance functional indicates that lower value of $\alpha$ indicates the lower dispersion of atoms in $G$, whereas, higher value of $\alpha$ indicates higher dispersion of atoms in $G$.
+
+\subsection{Part 2}
+
+Following Weak Law of large Numbers (WLLN), we can estimate the expected number of nonempty clusters $E(M)$ by the mean number of unique atoms from each realization of c.d.f. sampled from the prior $\text{DP}(\alpha, \mathcal{N}(0, 1))$ with different values of $\alpha$. Here, we have considered $\alpha = 0.1, 0.5, 1, 10$. Note that the sampled prior realizations are generated from a approximate prior achieved by truncation the infinite mixture to a mixture of 20 atoms. The red line in Figure 3 denotes the theoretical expected number of nonempty clusters as shown by Antoniak (1974) given by $E(M) = \alpha \log ((\alpha + n) / \alpha)$. We see for smaller values of $\alpha$, the approximation may have given reasonable estimates of number of non-empty clusters but I suspect that for a large value of $\alpha$, the truncation approximation might not be reasonable.
+
+```{r, echo=FALSE}
+set.seed(1729)
+N.S = 1000
+sample.size = 100
+alphaseq = c(0.1, 0.5, 1, 10)
+E.M.dph = array(dim = c(N.S, length(alphaseq)))
+for(j in 1:length(alphaseq)){
+  alpha = alphaseq[j]
+  dph.samples.temp = array(dim = c(sample.size, N.S))
+  for(i in 1:N.S){
+    dph.samples.temp[, i] = generate_DPH(alpha = alpha, K = 20, 
+                                         N.sample = sample.size,
+                                         base = "norm", baseparams = c(0, 1))
+  }
+  m = apply(dph.samples.temp, 2, function(x) length(unique(x)))
+  E.M.dph[, j] = m
+}
+E.M.theo = alphaseq * log((alphaseq + sample.size) / alphaseq)
+alpha.grid = c(seq(0, 0.5, length.out = 20),
+               seq(0.5, 1, length.out = 20),
+               seq(1, 10, length.out = 20))
+E.M.theo = alpha.grid * log((alpha.grid + sample.size) / alpha.grid)
+```
+
+```{r, echo=FALSE, fig.align='center', fig.height=4, fig.width=5, fig.cap="Comparison of theoretical expected number of non-empty clusters and estimated with finite truncation approximation based on 1000 samples"}
+plot(alpha.grid, E.M.theo, col = "red", xlim = c(0, 10.5),
+     xlab = expression(paste(alpha)), ylab = expression(paste(E(M))), type = "l")
+boxplot(E.M.dph, boxwex = c(0.25, 0.25, 0.25, 0.75), xaxt = "n", 
+        whisklty = 1, whisklwd = 0.5, 
+        staplelty = 1, staplelwd = 0.5,
+        outpch = ".", outcol = "grey", outcex = 0.5, 
+        medcol = "darkblue", col = "lightblue",
+        at = alphaseq, add = T)
+```
+
+
+
 
 
 

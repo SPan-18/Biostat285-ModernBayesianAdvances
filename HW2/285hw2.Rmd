@@ -327,8 +327,48 @@ barplot(table(apply(fit2$clust, 1, max)), col = "midnightblue", yaxt = "n")
 barplot(table(apply(fit3$clust, 1, max)), col = "midnightblue", yaxt = "n")
 ```
 
+\section{Problem 3}
 
+The model is a Dirichlet-multinomial process given as follows.
+\begin{align*}
+X_1 , X_2, \dots &\overset{\text{ind}}{\sim} G_K, G_K = \sum_{k = 1}^K \pi_k \delta_{\theta_k} \\
+\theta_1, \dots, \theta_K &\overset{\text{iid}}{\sim} H \\
+\pi_1, \dots, \pi_K &\sim \text{Dir}(\beta/K, \dots, \beta/K)
+\end{align*}
+The base measure $H$ is $\mathcal{N}(0, 1)$. 
 
+\subsection{Part 1}
+
+Here, $G_K$ is a Dirichlet-multinomial process of order $K$, and from part (ii) of Theorem 4.19 of Ghoshal, van der Vaart (2017), which says that if for a Dirichlet-multinomial process with parameters $(\alpha_{1,K}, \dots, \alpha_{K,K})$ with $\max_{1 \leq k \leq K} \alpha_{k, K}/\alpha_{.K} \to 0$ where $\alpha_{.K} = \sum_{k = 1}^K \alpha_{k, K}$, then if $\alpha_{.K} \to M$, then $\int \psi \, dG_K \to \int \psi \, dG$, where $G \sim DP(MG)$, for any $\psi \in \mathbb{L}^1(G)$. \par
+
+In our case, $\alpha_{.K} = \sum_{k = 1}^K \alpha_{k, K} = \beta$ is constant for all $K$ and hence trivially the condition holds. Hence, we can argue the usage of Dirichlet-multinomial process as a approximation of the infinite dimensional DP prior. Moreover, we also know that for sequence of finite measures $\bar{\alpha}_m \to \bar{\alpha}$, if $|\alpha_m| \to M$ finite, then $\text{DP}(\alpha_m) \to \text{DP}(\alpha)$.
+
+\subsection{Part 2}
+
+Suppose $s_{i,k}$ denotes the indicator variable $\mathbf{1}(X_i = \theta_k)$ for $i = 1, \dots, n+1$ and $k = 1, \dots, K$. Then the posterior predictive distribution can be given as follows.
+
+\begin{align*}
+p(X_{n+1} \mid X_1, \dots, X_n) &= \int \int p(X_{n+1} \mid \theta, \pi) p(\pi, \theta \mid X_1, \dots, X_n) d\pi d\theta \\
+& \propto \int \int p(X_{n+1} \mid \theta, \pi) p(X_1, \dots, X_n \mid \pi, \theta) p(\pi) p(\theta) d\pi d\theta \\
+& = \int \prod_{k = 1}^K \pi_k^{s_{n+1, k}} p(\theta) \int \prod_{k = 1}^K \pi_k^{n_k + \frac{\beta}{K} - 1} d \pi d \theta \\
+& = \int p(\theta) \int \prod_{k = 1}^K \pi_k^{s_{n+1, k} + n_k + \frac{\beta}{K} - 1} d\pi d\theta \\
+& \propto \int p(\theta) \prod_{k = 1}^K \Gamma(s_{n+1, k} + n_k + \frac{\beta}{K}) d\theta \\
+& = \prod_{k = 1}^K \int \text{exp}\{ - \frac12 \theta_k^2 \} \Gamma\left(s_{n+1, k} + n_k + \frac{\beta}{K}\right) d\theta
+\end{align*}
+Matching with the theorems relating to analogous MDP models in @ishwaranzarepour, I guess that the predictive posterior can be given by
+
+\[
+\sum_{k = 1}^K \frac{n_k + \frac{\beta}{K}}{n + \beta} \delta_{X_k^*} + \beta \left(1 - \frac{K}{n} \right) G_{n-K}^{(n)} 
+\]
+where,
+\[
+G_{n-K}^{(n)} = \sum_{k = 1}^{N-k} p_k^* \delta_{\theta_k}
+\]
+where $p_k^*$ are jumps (could not find the correct value, but can be given as a stick-breaking construction) and $\theta_k$ are iid from $\mathcal{N}(0,1)$.
+
+\subsection{Part 3}
+
+Clearly, as $K \to \infty$, we have the jumps $\frac{n_k + \beta/K}{n + \beta} \to \frac{n_k}{n + \beta}$ which aligns with the predictive posterior update of Pólya urn scheme.
 
 \section*{References}
 

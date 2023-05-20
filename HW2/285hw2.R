@@ -217,3 +217,45 @@ ecdfplot(fmla2, data = post.samples,
          xlab = "", ylab = "", xaxt = "n", asp = 1.5) +
   as.layer(xyplot(pnorm(normseq) ~ normseq, type = "l", 
                   col = "red", lty = 2, lwd = 2))
+
+###########################################################
+
+library(BNPmix)
+ffdat = cbind(faithful$eruptions, faithful$waiting)
+head(ffdat)
+
+DPprior <- PYcalibrate(Ek = 2, n = nrow(ffdat), discount = 0)
+prior <- list(strength = DPprior$strength, discount = 0)
+# prior <- list(strength = 1, discount = 0)
+min1 = 0.8*min(ffdat[,1]); max1 = 1.2*max(ffdat[,1])
+min2 = 0.8*min(ffdat[,2]); max2 = 1.2*max(ffdat[,2])
+grid <- expand.grid(seq(min1, max1, length.out = 100),
+                    seq(min2, max2, length.out = 100))
+output = list(grid = grid, out_type = "FULL")
+mcmc <- list(niter = 5000, nburn = 1000, m_imp = 100)
+set.seed(42)
+fit2 <- PYdensity(y = ffdat, mcmc = mcmc, prior = prior, output = output)
+
+p12 <- plot(fit2, dim = c(1,2), show_clust =  TRUE,
+            xlab="eruptions", ylab="waiting")
+
+dim(fit2$clust)
+table(apply(fit2$clust, 1, max))
+
+b1 = barplot(table(apply(fit2$clust, 1, max)))
+
+prior <- list(strength = 1, discount = 0)
+min1 = 0.8*min(ffdat[,1]); max1 = 1.2*max(ffdat[,1])
+min2 = 0.8*min(ffdat[,2]); max2 = 1.2*max(ffdat[,2])
+grid <- expand.grid(seq(min1, max1, length.out = 100),
+                    seq(min2, max2, length.out = 100))
+output = list(grid = grid, out_type = "FULL")
+mcmc <- list(niter = 5000, nburn = 1000, m_imp = 100)
+set.seed(42)
+fit3 <- PYdensity(y = ffdat, mcmc = mcmc, prior = prior, output = output)
+
+b2 = barplot(table(apply(fit3$clust, 1, max)))
+
+par(mfrow = c(1, 2))
+barplot(table(apply(fit2$clust, 1, max)), col = "midnightblue", yaxt = "n")
+barplot(table(apply(fit3$clust, 1, max)), col = "midnightblue", yaxt = "n")

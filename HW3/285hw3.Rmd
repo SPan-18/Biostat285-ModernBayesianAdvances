@@ -28,13 +28,6 @@ bibliography: refs.bib
 knitr::opts_chunk$set(echo = FALSE, comment = NA, fig.showtext = TRUE,
                       opts.label="kill_prefix", messages = FALSE)
 ```
-
-```{r, echo=FALSE}
-list.of.packages <- c("lattice")
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-```
-
 \section{Problem 1}
 
 \subsection{Part 1: Hierarchical parametric model}
@@ -275,9 +268,9 @@ bnp_blockgibbs <- function(y, H = 20, chainparams, hyparams){
               atom_v = tausq[indices, ]))
 }
 ```
-```{r}
+```{r blockgibbs}
 hyperparams <- list(alpha = 1, mu0 = 0, kappa = 1, a = 1, b = 1)
-chain_params <- list(n.samples = 1000, burnin = 0.1, n.thin = 1)
+chain_params <- list(n.samples = 1000, burnin = 0.1, n.thin = 20)
 out <- bnp_blockgibbs(y = dat, 
                       H = 20, 
                       chainparams = chain_params, 

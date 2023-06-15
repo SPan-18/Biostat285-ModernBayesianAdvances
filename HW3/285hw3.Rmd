@@ -1,0 +1,346 @@
+---
+title: 'UCLA Biostatistics 285: Homework 3'
+subtitle: 'Instructor: Dr. Michele Guindani'
+author: "Soumyakanti Pan, e-mail: span18@ucla.edu"
+date: \today
+output: 
+  pdf_document:
+    toc: false
+    number_sections: true
+    df_print: kable
+header-includes:
+  - \usepackage[utf8]{inputenc}
+  - \usepackage[T1]{fontenc}
+  - \usepackage{amsmath, amssymb, amsfonts, bm}
+  - \newcommand{\given}{\,|\,}
+  - \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+  - \newcommand{\mb}[1]{\mathbf{#1}}
+  - \DeclareUnicodeCharacter{03B1}{$\alpha$}
+  - \DeclareUnicodeCharacter{03BC}{$\mu_0$}
+  - \DeclareUnicodeCharacter{03BA}{$\kappa$}
+  - \DeclareUnicodeCharacter{03BF}{$a_\tau$}
+  - \DeclareUnicodeCharacter{03BE}{$b_\tau$}
+  - \DeclareUnicodeCharacter{2080}{$G_0$}
+bibliography: refs.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA, fig.showtext = TRUE,
+                      opts.label="kill_prefix", messages = FALSE)
+```
+
+```{r, echo=FALSE}
+list.of.packages <- c("lattice")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+```
+
+\section{Problem 1}
+
+\subsection{Part 1: Hierarchical parametric model}
+
+Suppose $y_{ijt}$ denotes the measurement of blood pressure of the $j$-th patient in the $i$-th hospital at time-point $t$ where, $t = 1, \dots, T_{ij}$, $j = 1, \dots, n_i$ and $i = 1, \dots, 15$. The set of covariates include age, smoking status and others which to my belief are not varying over time, If $X_{ij}$ encodes an intercept and the independent variables corresponding to the $j$-th patient in the $i$-th hospital and time, then we can consider a parametric model as follows assuming that the observations can be modelled using a mixed effects model. For $t = 1, \dots, T_{ij}$, $j = 1, \dots, n_i$ and $i = 1, \dots, 15$,
+\begin{align*}
+  y_{ijt} \given \bm{\beta}, \mathbf{b}_{ij}, \alpha_i, \sigma^2_\epsilon  & \overset{\text{iid}}{\sim} \mathcal{N} \left( X_{ij}^\top \bm{\beta} + \alpha_i + b_{ij}^{(0)} + b_{ij}^{(1)}t, \sigma^2_\epsilon \right) \\
+  \mathbf{b}_{ij} \given \mathbf{D} & \sim \mathcal{N}(\mathbf{0}, \mathbf{D}), j = 1, \dots, n_i, i = 1, \dots, 15 \\
+  \alpha_i \given \sigma^2_\alpha & \sim \mathcal{N}(0, \sigma^2_\alpha), i = 1, \dots, 15 \\
+  \bm{\beta} \given \mu_\beta, \mathbf{V} & \sim \mathcal{N}(\mu_\beta, \mathbf{V}); \, \sigma^2_\epsilon \sim \mathcal{IG}(a_1, b_1)
+\end{align*}
+
+\subsection{Part 2: Heterogeneity}
+
+To make the model allow the distribution of the varying parameters to be unknown to
+allow uncertainty in variability (heterogeneity) among patients as well as patients within study centers, in addition to the model above we can treat the prior parameters like $\{\sigma^2_\alpha, \mathbf{V}, \mathbf{D}\}$ as unknown and consider a hyperprior on these parameters such as follows.
+\begin{align*}
+  \sigma^2_\alpha & \sim \mathcal{IG}(a_2, b_2) \\
+  \mathbf{V} & \sim \mathcal{IW}(q_1, k_1 \mathbf{I}) \\
+  \mathbf{D} & \sim \mathcal{IW}(q_2, k_2 \mathbf{I})
+\end{align*}
+We can choose the hyperparameters $q_1, q_2$ and $k_1, k_2$ in alignment with the prior belief of the amount of correlation that can be present in the corresponding covariance matrices of $\bm{\beta}$ and $\mathbf{b}_{ij}$.
+
+\subsection{Part 3: Gibbs sampler}
+
+The model above can be written in the following notations for the $j$-th patient of the $i$-th hospital in the following way. 
+\[
+\mathbf{y}_{ij} \sim \mathcal{N}(\mathbf{X}_{ij}^\top \bm{\beta} + \alpha_i \mathbf{1} + \mathbf{Z}_{ij}^\top \mathbf{b}_{ij}, \sigma^2_\epsilon \mathbf{I}) 
+\]
+where, $\mathbf{X}_{ij} = \mathbf{1} \otimes X_{ij}$ and $\mathbf{Z}_{ij}$ is appropriately considered with an intercept and the time points. If aggregated over $i$ and $j$, we can write the model as
+\[
+\mathbf{y} \given \bm{\alpha}, \mathbf{b}, \sigma^2_\epsilon \sim \mathcal{N}(\mathbf{X}^\top \bm{\beta} + \bm{\alpha} + \mathbf{Z}^\top \mathbf{b}, \sigma^2_\epsilon \mathbf{I} )
+\]
+where the vectors $\bm{\alpha}$ and $\mathbf{b}$ are appropriately stacked. An appropriate semiparametric model can be given as follows.
+\begin{align*}
+  y_{ijt} \given \bm{\beta}, \mathbf{b}_{ij}, \alpha_i, \sigma^2_\epsilon  & \overset{\text{iid}}{\sim} \mathcal{N} \left( X_{ij}^\top \bm{\beta} + \alpha_i + b_{ij}^{(0)} + b_{ij}^{(1)}t, \sigma^2_\epsilon \right) \\
+  \mathbf{b}_{ij} & \sim \text{DP}(\phi_b, G_b) , j = 1, \dots, n_i, i = 1, \dots, 15 \\
+  \alpha_i & \sim \text{DP}(\phi_\alpha, G_\alpha), i = 1, \dots, 15 \\
+  \bm{\beta} & \sim \text{DP}(\phi_\beta, G_\beta); \, \sigma^2_\epsilon \sim \mathcal{IG}(a_1, b_1) \\
+  \text{where, } \phi_{(\cdot)} & \sim \text{Gamma}(c_{\cdot}, \lambda_{\cdot}) \\
+  G_b & = \mathcal{N}_2(\mathbf{0}, \mathbf{D}); \, G_\alpha = \mathcal{N}(0, \sigma^2_\alpha); \, G_\beta = \mathcal{N}_p(\mathbf{0}, \mathbf{V}) \\
+  \sigma^2_\alpha & \sim \mathcal{IG}(a_2, b_2) \\
+  \mathbf{V} & \sim \mathcal{IW}(q_1, k_1 \mathbf{I}) \\
+  \mathbf{D} & \sim \mathcal{IW}(q_2, k_2 \mathbf{I})
+\end{align*}
+
+In the Gibbs sampler for the parametric model, the full conditionals of the parameters $\bm{\beta}, \{\alpha_i\}_{i = 1}^{15}, \{\mathbf{b}_{ij}\}$ will be either univariate or multivariate normal whereas, for the semiparametric model, the atoms for the corresponding parameters will be sampled from a similar normal distribution and the weights from a beta distribution.
+
+\section{Problem 2}
+
+\subsection{Part 1: Simulation of data}
+
+The function `normmixture` generates a finite sample from a mixture of $k$ normal distribution given vectors of mixture probability $\mathbf{p} = \{p_i\}_{i = 1}^k$, component means $\bm{\mu} = \{\mu_i\}_{i = 1}^k$ and variances $\bm{\tau}^2 = \{\tau^2_i\}_{i = 1}^k$. Here, $\mathbf{p} = (0.1, 0.5, 0.4)$, $\bm{\mu} = (-1, 0, 1)$ and $\bm{\tau}^2 = (0.2^2, 1, 0.4^2)$.
+```{r}
+pvec <- c(0.1, 0.5, 0.4)
+muvec <- c(-1, 0, 1)
+sdvec <- c(0.2, 1, 0.4)
+
+normmixture <- function(N, p, m, s){
+  if(!length(p) == length(m) | !length(m) == length(s)){
+    stop("Incorrect dimensions of input parameters.")
+  }else{
+    out <- NULL
+    count <- rmultinom(1, N, prob = p)
+    for(i in 1:length(count)){
+      temp <- rnorm(n = count[i], mean = m[i], sd = s[i])
+      out <- c(out, temp)
+    }
+  }
+  return(out)
+}
+
+set.seed(1729)
+dat = normmixture(N = 100, p = pvec, m = muvec, s = sdvec)
+```
+
+\subsection{Part 2: Frequentist density estimation}
+
+The following density estimation is carried out by the `density()` routine in `R`. The function `truemixnorm` calculates the actual density of a given mixture of normal distributions.
+
+```{r}
+truemixnorm <- function(x, p, m, s){
+  if(!length(p) == length(m) | !length(m) == length(s)){
+    stop("Incorrect dimensions of input parameters.")
+  }else{
+    temp <- 0
+    for(i in 1:length(p)){
+      temp <- temp + p[i] * dnorm(x, mean = m[i], sd = s[i])
+    } 
+  }
+  return(temp)
+}
+
+curveplotter <- function(x){
+  return(truemixnorm(x, p = pvec, m = muvec, s = sdvec))
+}
+
+fhat_dat = density(dat)
+plotmax = max(fhat_dat$y, curveplotter(seq(-2, 2, length.out = 100)))
+```
+```{r, fig.height=4, fig.width=5, fig.align='center', fig.cap="Density estimation based on 100 samples from a mixture-normal using the density() routine in R"}
+plot(fhat_dat, lty = 3, lwd = 1.5, ylim = c(0, 1.2 * plotmax),
+     main = "", xlab = expression(paste(y)))
+curve(curveplotter, n = 1000, add = T, col = "red")
+legend("topright", legend = c("True", "Estimated"),
+       col = c("red", "black"), lty = c(1, 3), lwd = c(1, 1.5),
+       bty = "n", cex = 0.8)
+```
+
+\subsection{Part 3: Blocked Gibbs Sampler}
+
+A Bayesian nonparametric approach to model the data ($\mathbf{y} = (y_1, \dots, y_n)$) is a Dirichlet process mixture which is given below.
+\begin{align*}
+  y_i \given P & \overset{\text{ind}}{\sim} \int \phi(\cdot \given \mu, \tau^2) dP(\mu, \tau^2) \\
+  P & \sim \text{DP}(\alpha, G_0)
+\end{align*}
+where, $\phi$ denotes the Gaussian kernel. Assuming a finite mixture of a $\text{DPM}_\text{H}$ with $H = 20$ mixture components, we can write a hierarchical model as follows.
+\begin{align*}
+  y_i \given r_i = h & \sim \mathcal{N}(\mu_h, \tau^2_h) \text{ with } \Pr(r_i = h) = w_h, h = 1, \dots, H\\
+  \text{where, } w_h &= v_h \prod_{\ell < h} (1 - v_\ell), h < H \text{ and } v_H = 1 \\
+  v_h & \sim \text{Beta} (1, \alpha), h = 1, \dots, H \\
+  \mu_h \given \tau^2_h & \sim \mathcal{N}(\mu_0, \kappa), \ \tau^2_h \sim \mathcal{IG}(a_\tau, b_\tau)
+\end{align*}
+where, $\mathbf{r} = (r_1, \dots, r_n) \in \{1, \dots, H\}^n$ denotes the cluster membership indicator vector. Suppose $\mathbf{v} = (v_1, \dots, v_{H - 1})$, $\mathbf{m} = (m_1, \dots, m_H)$ and $\bm{\tau}^2 = (\tau_1^2, \dots, \tau_n^2)$ and $\bm{\theta} = \{\bm{m}, \mathbf{\tau}^2\}$. Given the above approximate model, the blocked Gibbs sampler algorithm to sample from $\pi(\mathbf{r}, \mathbf{w}, \bm{\theta} \given \mathbf{y})$ proceeds as follows.
+
+\begin{algorithm}
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{posterior samples $(\mathbf{r}^{(t)}, \mathbf{w}^{(t)}, \mathbf{m}^{(t)}, \bm{\tau}^{2(t)})_{t = 0}^T$}
+\SetKwInOut{Initialize}{Initialize}
+\Initialize{Start with $\mathbf{w}^{(0)} = (1/H, \dots, 1/H)$ and suitable random $\mathbf{r}^{(0)}, \mathbf{m}^{(0)}, \bm{\tau}^{2(0)}$.}
+\BlankLine
+\While{$t = 0, 1, \dots, T$}{
+  \begin{enumerate}
+    \item Sample $\mathbf{r}^{(t+1)}$ with $$ \Pr(r_i^{(t+1)} = h) \propto w_h^{(t)} \phi(y_i \given m_h^{(t)}, \tau_h^{2(t)}), h = 1, \dots, H. $$
+    \item Sample $\mathbf{w}^{(t+1)}$ by the stick-breaking construction $w_h^{(t+1)} = v_h^{(t+1)} \prod_{\ell = 1}^{h-1} (1 - v_\ell^{(t+1)})$ for $h = 1, \dots, H$ after sampling $\mathbf{v}^{(t+1)}, h = 1, \dots, H-1$ as 
+    $$ v_h^{(t+1)} \sim \text{Beta}(A_h^{(t)} + 1, B_h^{(t)} + \alpha) $$
+    where, $A_h^{(t)} = \sum_{i = 1}^n \mathbf{1}(r_i^{(t)} = h)$ and $B_h^{(t)} = \sum_{i = 1}^n \mathbf{1}(r_i^{(t)} > h)$.
+    \item Let $S_h^{(t)} = \{i : r_i^{(t)} = h\}$. Then sample $\mathbf{m}^{(t+1)}$ as follows. For $h = 1, \dots, H$, $$ m_h^{(t+1)} \sim \mathcal{N} \left( \frac{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} \bar{y}_{S_h^{(t)}} + \frac{\mu_0}{\kappa}}{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} + \frac{1}{\kappa}}, \frac{1}{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} + \frac{1}{\kappa}} \right). $$
+    \item Sample $\bm{\tau}^{2(t+1)}$ as following. For $h = 1, \dots, H$,
+    $$ \tau^{2(t+1)}_h \sim \mathcal{IG} \left( a_\tau + \frac{|S_h^{(t)}|}{2}, b_\tau + \frac{1}{2} \sum_{i \in S_h^{(t)}} \left(y_i - m_h^{(t)}\right)^2 \right). $$
+  \end{enumerate}
+}
+\caption{Blocked Gibbs sampler for posterior $\pi(\mathbf{r}, \mathbf{w}, \bm{\theta} \given \mathbf{y})$}
+\label{algo:blockgibbs}
+\end{algorithm}
+
+The function `bnp_blockgibbs` runs a blocked Gibbs sampler and outputs a chain containing relevant parameters.
+
+```{r}
+Sethu_post = function(alpha, A, B, H){
+  v = w = array(dim = H)
+  v[H] = 1
+  for(i in 1:(H - 1)){
+    v[i] = rbeta(n = 1, A[i] + 1, B[i] + alpha)
+  }
+  w[1] = v[1]
+  for(h in 2:H){
+    w[h] = v[h] * prod(1 - v[1:(h - 1)])
+  }
+  return(w)
+}
+
+bnp_blockgibbs <- function(y, H = 20, chainparams, hyparams){
+  # Set hyper-parametrs
+  alpha <- hyparams$alpha
+  mu0 <- hyparams$mu0
+  kappa <- hyparams$kappa
+  a_tau <- hyparams$a
+  b_tau <- hyparams$b
+  
+  # Chain size
+  N.samples <- round((chainparams$n.samples * 
+                  chainparams$n.thin) / (1 - chainparams$burnin))
+  
+  # Pre-allocation
+  n <- length(y)
+  r <- array(dim = c(N.samples, n))
+  w <- array(dim = c(N.samples + 1, H))
+  m <- array(dim = c(N.samples + 1, H))
+  tausq <- array(dim = c(N.samples + 1, H))
+  library(common)
+  cat("Running Blocked Gibbs sampler with options:\n",
+      "n.iter = ", N.samples, 
+      ", Burn-in = ", 0.1 * N.samples, "\n",
+      "Prior: DPM(\U03B1, \U2080)\n",
+      "Hyperpriors: \U2080", 
+      "= N(\U03BC", ",\U03BA)\n", 
+      "\t\t\U03BC", " = ", mu0, ", \U03BA = ", kappa, ";\n",
+      "\t\t \U03B1 = ", alpha, "; \U03BF = ", a_tau, ", \U03BE = ", b_tau, ".\n",
+      "========================================\n")
+  
+  # Initialization
+  w[1, ] = rep(1/H, H)
+  m[1, ] = runif(H, min = min(y), max = max(y))
+  tausq[1, ] = rep(1, H)
+  
+  # Chain
+  t0 = Sys.time()
+  for(t in 1:N.samples){
+    for(i in 1:n){
+      samp_prob_i = w[t, ] * dnorm(y[i], mean = m[t, ], sd = sqrt(tausq[t, ]))
+      r[t, i] = sample(1:H, size = 1, prob = samp_prob_i)
+    }
+    A = B = array(dim = H)
+    for(h in 1:H){
+      A[h] = sum(r[t, ] == h)
+      B[h] = sum(r[t, ] > h)
+    }
+    w[t+1, ] = Sethu_post(alpha = alpha, A = A, B = B, H = H)
+    for(h in 1:H){
+      if(sum(r[t, ] == h) == 0){
+        m[t+1, h] = rnorm(n = 1, mean = mu0, sd = sqrt(kappa))
+        tausq[t+1, h] = 1/rgamma(n = 1, shape = a_tau, rate = b_tau)
+      }else{
+        S_h = which(r[t, ] == h)
+        atom_h_prec = (length(S_h) / tausq[t, h]) + (1 / kappa)
+        atom_h_mean = ((length(S_h) * mean(y[S_h]) / tausq[t, h]) + 
+                         (mu0 / kappa)) / atom_h_prec
+        m[t+1, h] = rnorm(n = 1, mean = atom_h_mean, sd = sqrt(1/atom_h_prec))
+        sse_h = sum((y[S_h] - m[t, h])^2)
+        tausq[t+1, h] = 1/rgamma(n = 1, shape = a_tau + 0.5*length(S_h), 
+                                 rate = b_tau + 0.5*sse_h)
+      }
+    }
+  }
+  t.elapsed = Sys.time() - t0
+  cat("Elapsed", round(t.elapsed,2), units(t.elapsed), "\n")
+  
+  # Chain cleaning
+  w = w[-1, ]
+  m = m[-1, ]
+  tausq = tausq[-1, ]
+  indices = chainparams$burnin * N.samples + 
+    (1:chainparams$n.samples) * chainparams$n.thin
+  return(list(weights = w[indices, ], 
+              atom_m = m[indices, ], 
+              atom_v = tausq[indices, ]))
+}
+```
+```{r}
+hyperparams <- list(alpha = 1, mu0 = 0, kappa = 1, a = 1, b = 1)
+chain_params <- list(n.samples = 1000, burnin = 0.1, n.thin = 1)
+out <- bnp_blockgibbs(y = dat, 
+                      H = 20, 
+                      chainparams = chain_params, 
+                      hyparams = hyperparams)
+```
+
+\subsection{Part 4: Slice Sampler}
+
+I spent a lot of time and tried to figure out the algorithm as given in @walker2007 and @Kalli2011. I could not understand the algorithms for updating the collection of random variables $\{v_h\}_{h \geq 1}$ at which the algorithms given in these two papers differ. While @walker2007 uses the truncated beta construction, @Kalli2011 uses the same update rule as we have seen in the block sampler. I understand that we do not need to generate only finitely many $(v_h, m_h, \tau^2_h)$ at each iteration and continue for $h = 1, \dots, N^*$ where $N^* = \max_h N_i$ and $N_i = \min \{k: \sum_{h = 1}^k w_h > 1 - u_i \}$. Hence, if we sample $N^*$ many weights, then the sampling of $\mathbf{r}$ is guaranteed. @walker2007 mentions a $k^*$ twice in his algorithm - once, when sampling $p(v_j \given v_{-j}, \cdots)$ and next, when sampling the cluster indicator variables for calculating the set $A_{w}(u_i)$; are they the same $k^*$?
+
+\begin{algorithm}
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{Posterior samples $(\mathbf{u}^{(t)}, \mathbf{r}^{(t)}, \mathbf{w}^{(t)}, \mathbf{m}^{(t)}, \bm{\tau}^{2(t)})_{t = 0}^T$}
+\SetKwInOut{Initialize}{Initialize}
+\Initialize{Start with suitable random $\mathbf{v}^{(0)}, \mathbf{r}^{(0)}, \mathbf{m}^{(0)}, \bm{\tau}^{2(0)}$.}
+\BlankLine
+\While{$t = 0, 1, \dots, T$}{
+  \begin{enumerate}
+    \item For $i = 1, \dots, n$, sample $u_i$ as below.
+    $$ u_i^{(t)} \sim \text{U}(0, w_{r_i^{(t)}}) $$
+    \item Let $S_h^{(t)} = \{i : r_i^{(t)} = h\}$. Then sample $\mathbf{m}^{(t+1)}$ as follows. For $h = 1, \dots, H$, $$ m_h^{(t+1)} \sim \mathcal{N} \left( \frac{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} \bar{y}_{S_h^{(t)}} + \frac{\mu_0}{\kappa}}{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} + \frac{1}{\kappa}}, \frac{1}{\frac{|S_h^{(t)}|}{\tau^{2(t)}_h} + \frac{1}{\kappa}} \right). $$
+    \item Sample $\bm{\tau}^{2(t+1)}$ as following. For $h = 1, \dots, H$,
+    $$ \tau^{2(t+1)}_h \sim \mathcal{IG} \left( a_\tau + \frac{|S_h^{(t)}|}{2}, b_\tau + \frac{1}{2} \sum_{i \in S_h^{(t)}} \left(y_i - m_h^{(t)}\right)^2 \right). $$
+    \item Find $r^* = \max \mathbf{r}^{(t)}$. For $h = 1, 2, \dots, r^*$, first calculate $c_h$ and $d_h$ where,
+    $$ c_h = \max_{r_i^{(t)} = h} \left\{ \frac{u_i^{(t)}}{\prod_{\ell < h} (1 - v_\ell)} \right\} \text{ and, } d_h = \max_{r_i^{(t)} > h} \left\{ \frac{u_i^{(t)}}{v_{r_i^{(t)}} \prod_{l < r_i^{(t)}, l \neq h} (1 - v_l)} \right\}. $$
+    Then, draw a uniform random variable $U$ on $(0, 1]$, and then for $h = 1, \dots, r^*$, set $v_h = F^{-1}(U)$, where
+    $$ F^{-1}(u) = 1 - [(1 - y)(1 - c_h)^\alpha + y (1 - d_h)^\alpha]^{1/\alpha} $$
+    is the inverse of the cdf on $c_h < v_h < d_h$, given by
+    $$ F(v_h) = \frac{(1 - c_h)^\alpha - (1 - v_h)^\alpha}{(1 - c_h)^\alpha - (1 - d_h)^\alpha}. $$
+    \item From $\{v_h, h = 1, \dots, r^*\}$, calculate $\{w_h^{(t+1)}, h = 1, \dots, r^*\}$.
+    \item For $i = 1, \dots, n$, find the set $A_w(u_i^{(t)}) = \{h : w_h > u_i^{(t)} \}$. For each $i$, draw $r_i^{(t+1)}$ as
+    $$ \Pr(r_i^{(t+1)} = h \given \cdots) \propto \mathbf{1} \left(h \in A_w(u_i^{(t)}) \right) \phi(y_i \given m_h^{(t+1)}, \tau_h^{2(t+1)}) $$
+  \end{enumerate}
+}
+\caption{Slice sampler for posterior $\pi(\mathbf{u}, \mathbf{r}, \mathbf{w}, \bm{\theta} \given \mathbf{y})$}
+\label{algo:slicesampler}
+\end{algorithm}
+
+\subsection{Part 5: Bayesian nonparametric density estimates}
+
+```{r, fig.height=4, fig.width=5, fig.align='center', fig.cap="Blocked Gibbs sampler: Posterior samples of the predictive density given the generated 100 samples"}
+plot(fhat_dat, lty = 3, lwd = 1.5, ylim = c(0, 1.25 * plotmax),
+     main = "", xlab = expression(paste(y)))
+curve(curveplotter, lwd = 1, n = 1000, add = T, col = "red")
+ind = dim(out$weights)[1]
+for(i in (ind - 100):ind){
+  post_curveplotter <- function(x){
+    return(truemixnorm(x, p = out$weights[i, ], 
+                       m = out$atom_m[i, ], 
+                       s = sqrt(out$atom_v[i, ])))
+  }
+  curve(post_curveplotter, n = 1000, add = T, 
+        lwd = 0.5, lty = 1,
+        col = adjustcolor("green", alpha.f = 0.1))
+}
+legend("topleft", legend = c("Frequentist", "BNP"),
+       bty = "n", lty = c(3, 1),
+       col = c("black", "green"), cex = 0.8,
+       title = "Density estimates", title.cex = 0.7)
+```
+
+
+\section*{References}
+
+<div id="refs"></div>
